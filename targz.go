@@ -8,22 +8,40 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
+
+// Opts represents options for extraction.
+type Opts struct {
+	// TrimPathElements specifies the number of path elements to trim while
+	// extracting, such that a tarball like:
+	//
+	//  /root/foo/bar/notes.txt
+	//
+	// Could be extracted into "new/bar/notes.txt" instead of "new/bar/root/foo/bar/notes.txt" via:
+	//
+	//  TrimPathElements: 3
+	//
+	TrimPathElements int
+}
 
 // Extract untars a .tar.gz source file and decompresses the contents into
 // destination.
-func Extract(src io.Reader, dst string) error {
+func Extract(src io.Reader, dst string, opts *Opts) error {
+	if opts == nil {
+		opts = &Opts{}
+	}
 	gzr, err := gzip.NewReader(src)
 	if err != nil {
 		return fmt.Errorf("%s: create new gzip reader: %v", src, err)
 	}
 	defer gzr.Close()
 
-	return untar(tar.NewReader(gzr), dst)
+	return untar(tar.NewReader(gzr), dst, opts)
 }
 
 // untar un-tarballs the contents of tr into destination.
-func untar(tr *tar.Reader, destination string) error {
+func untar(tr *tar.Reader, destination string, opts *Opts) error {
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -32,22 +50,30 @@ func untar(tr *tar.Reader, destination string) error {
 			return err
 		}
 
-		if err := untarFile(tr, header, destination); err != nil {
+		if err := untarFile(tr, header, destination, opts); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func trimPathElements(f string, n int) string {
+	elems := strings.Split(filepath.Clean(f), string(os.PathSeparator))
+	if len(elems)-1 < n {
+		n = len(elems) - 1
+	}
+	return filepath.Join(elems[n:]...)
+}
+
 // untarFile untars a single file from tr with header header into destination.
-func untarFile(tr *tar.Reader, header *tar.Header, destination string) error {
+func untarFile(tr *tar.Reader, header *tar.Header, destination string, opts *Opts) error {
 	switch header.Typeflag {
 	case tar.TypeDir:
-		return mkdir(filepath.Join(destination, header.Name))
+		return mkdir(filepath.Join(destination, trimPathElements(header.Name, opts.TrimPathElements)))
 	case tar.TypeReg, tar.TypeRegA:
-		return writeNewFile(filepath.Join(destination, header.Name), tr, header.FileInfo().Mode())
+		return writeNewFile(filepath.Join(destination, trimPathElements(header.Name, opts.TrimPathElements)), tr, header.FileInfo().Mode())
 	case tar.TypeSymlink:
-		return writeNewSymbolicLink(filepath.Join(destination, header.Name), header.Linkname)
+		return writeNewSymbolicLink(filepath.Join(destination, trimPathElements(header.Name, opts.TrimPathElements)), header.Linkname)
 	case tar.TypeXGlobalHeader:
 		// Ignore global extended headers, which are present in e.g. git repo archives
 		return nil

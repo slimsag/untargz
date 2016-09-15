@@ -8,7 +8,7 @@ Is a simple library to untar a tar.gz file from an `io.Reader`.
 import "github.com/slimsag/untargz"
 
 ...
-err := untargz.Extract(r, "destination/folder")
+err := untargz.Extract(r, "destination/folder", nil)
 ...
 ```
 
