@@ -48,6 +48,9 @@ func untarFile(tr *tar.Reader, header *tar.Header, destination string) error {
 		return writeNewFile(filepath.Join(destination, header.Name), tr, header.FileInfo().Mode())
 	case tar.TypeSymlink:
 		return writeNewSymbolicLink(filepath.Join(destination, header.Name), header.Linkname)
+	case tar.TypeXGlobalHeader:
+		// Ignore global extended headers, which are present in e.g. git repo archives
+		return nil
 	default:
 		return fmt.Errorf("%s: unknown type flag: %c", header.Name, header.Typeflag)
 	}
